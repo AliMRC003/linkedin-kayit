@@ -1,12 +1,12 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const { MongoClient } = require('mongodb');
+const mongoose = require('mongoose');
+const { createTempEmailAccount, getVerificationCode } = require('./mailService');
+const User = require('./models/User');
+require('dotenv').config();
 
 // Stealth plugin'i ekle
 puppeteer.use(StealthPlugin());
-
-// MongoDB Atlas bağlantı URL'si (bu URL'yi sizden alacağım)
-const uri = "mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority&appName=AtlasApp";
 
 // Rastgele bekleme fonksiyonu
 function randomSleep(min = 1000, max = 3000) {
@@ -47,23 +47,28 @@ async function realisticType(page, selector, text) {
 
 async function startLinkedInSignup() {
     let browser;
-    let client;
     try {
         // MongoDB'ye bağlan
-        client = new MongoClient(uri);
-        await client.connect();
-        console.log('MongoDB bağlantısı başarılı...');
-        
-        const database = client.db("linkedinDB");
-        const collection = database.collection("users");
-        
-        // Kullanıcı bilgilerini çek
-        const user = await collection.findOne({ status: "pending" });
-        if (!user) {
-            throw new Error("Kayıt bekleyen kullanıcı bulunamadı!");
-        }
-        
-        console.log('Kullanıcı bilgileri alındı:', user.email);
+        await mongoose.connect(process.env.MONGO_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true
+        });
+        console.log('✅ MongoDB bağlantısı başarılı...');
+
+        // Geçici e-posta oluştur
+        console.log('Geçici e-posta oluşturuluyor...');
+        const { address, password, token } = await createTempEmailAccount();
+        console.log('Geçici e-posta oluşturuldu:', address);
+
+        // Kullanıcı bilgilerini kaydet
+        const newUser = new User({
+            email: address,
+            password: password,
+            status: 'pending',
+            createdAt: new Date()
+        });
+        await newUser.save();
+        console.log('Kullanıcı MongoDB\'ye kaydedildi:', address);
 
         // Launch browser with stealth settings
         browser = await puppeteer.launch({
@@ -117,20 +122,20 @@ async function startLinkedInSignup() {
         await randomScroll(page);
 
         // Step 2: Fill email and password
-        await realisticType(page, 'input[id="email-address"]', user.email);
+        await realisticType(page, 'input[id="email-address"]', address);
         console.log('Email adresi girildi...');
         await randomSleep(1000, 2000);
 
-        await realisticType(page, 'input[id="password"]', user.password);
+        await realisticType(page, 'input[id="password"]', password);
         console.log('Şifre girildi...');
         await randomSleep(1000, 2000);
 
         // Step 3: Fill first name and last name
-        await realisticType(page, 'input[id="first-name"]', user.firstName);
+        await realisticType(page, 'input[id="first-name"]', 'Test');
         console.log('İsim girildi...');
         await randomSleep(1000, 2000);
 
-        await realisticType(page, 'input[id="last-name"]', user.lastName);
+        await realisticType(page, 'input[id="last-name"]', 'User');
         console.log('Soyisim girildi...');
         await randomSleep(1000, 2000);
 
@@ -181,7 +186,7 @@ async function startLinkedInSignup() {
         await randomSleep(2000, 4000);
 
         // Fill university
-        await realisticType(page, 'input[id="typeahead-input-for-school-name"]', user.education.university);
+        await realisticType(page, 'input[id="typeahead-input-for-school-name"]', 'Test University');
         await randomSleep(1000, 2000);
         await page.keyboard.press('Enter');
         console.log('Üniversite bilgisi girildi...');
@@ -189,13 +194,13 @@ async function startLinkedInSignup() {
 
         // Select start year
         await page.waitForSelector('select[id="onboarding-profile-edu-start-year"]', { visible: true });
-        await page.select('select[id="onboarding-profile-edu-start-year"]', user.education.startDate.year);
+        await page.select('select[id="onboarding-profile-edu-start-year"]', '2020');
         console.log('Başlangıç yılı seçildi...');
         await randomSleep(1000, 2000);
 
         // Select end year
         await page.waitForSelector('select[id="onboarding-profile-edu-end-year"]', { visible: true });
-        await page.select('select[id="onboarding-profile-edu-end-year"]', user.education.endDate.year);
+        await page.select('select[id="onboarding-profile-edu-end-year"]', '2024');
         console.log('Bitiş yılı seçildi...');
         await randomSleep(1000, 2000);
 
@@ -213,11 +218,16 @@ async function startLinkedInSignup() {
         console.log('Eğitim bilgileri kaydedildi...');
         await randomSleep(2000, 4000);
 
-        // Step 7: Email verification (manual)
-        console.log('Lütfen email doğrulama kodunu manuel olarak girin...');
-        await page.waitForSelector('input[id="email-confirmation-input"]', { visible: true });
-        await page.waitForNavigation({ waitUntil: 'networkidle0' });
-        console.log('Email doğrulaması tamamlandı...');
+        // Step 7: Email verification
+        console.log('Email doğrulama kodu bekleniyor...');
+        const verificationCode = await getVerificationCode(token);
+        if (verificationCode) {
+            await realisticType(page, 'input[id="email-confirmation-input"]', verificationCode);
+            console.log('Email doğrulama kodu girildi...');
+            await randomSleep(1000, 2000);
+        } else {
+            throw new Error('Email doğrulama kodu alınamadı!');
+        }
 
         // Step 8: Select job seeker intent
         const jobSeekerRadio = await page.waitForSelector('input[id="onboarding-job-seeker-intent-radio-button-PASSIVE"]', { visible: true });
@@ -251,53 +261,30 @@ async function startLinkedInSignup() {
         console.log('Ek adımlar atlandı...');
         await randomSleep(2000, 4000);
 
-        const skipButton2 = await page.waitForSelector('button[id="ember693"]', { visible: true });
-        const skipButton2Box = await skipButton2.boundingBox();
-        await randomMouseMove(page, skipButton2Box.x + skipButton2Box.width/2, skipButton2Box.y + skipButton2Box.height/2);
+        // Step 10: Final skip
+        const finalSkipButton = await page.waitForSelector('button[id="ember693"]', { visible: true });
+        const finalSkipButtonBox = await finalSkipButton.boundingBox();
+        await randomMouseMove(page, finalSkipButtonBox.x + finalSkipButtonBox.width/2, finalSkipButtonBox.y + finalSkipButtonBox.height/2);
         await randomSleep(500, 1500);
         await page.click('button[id="ember693"]');
-        console.log('Geç butonuna tıklandı...');
+        console.log('Son adım atlandı...');
         await randomSleep(2000, 4000);
 
-        // Step 10: Finalize
-        const finalButton = await page.waitForSelector('button[id="ember696"]', { visible: true });
-        const finalButtonBox = await finalButton.boundingBox();
-        await randomMouseMove(page, finalButtonBox.x + finalButtonBox.width/2, finalButtonBox.y + finalButtonBox.height/2);
-        await randomSleep(500, 1500);
-        
-        // Tıklama ve navigasyonu birlikte bekle
-        await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }),
-            page.click('button[id="ember696"]')
-        ]);
-        console.log('Sonlandır butonuna tıklandı...');
-        await randomSleep(2000, 4000);
-
-        // Step 11: Wait for redirection to main page
-        await page.waitForNavigation({ waitUntil: 'networkidle0' });
-        if (page.url().includes('linkedin.com/feed')) {
-            console.log('Başarıyla LinkedIn ana sayfasına ulaşıldı!');
-            // Kullanıcı durumunu güncelle
-            await collection.updateOne(
-                { _id: user._id },
-                { $set: { status: "completed" } }
-            );
-            console.log('Kullanıcı durumu güncellendi: completed');
-        } else {
-            console.log('Ana sayfaya yönlendirilemedi!');
-        }
+        // Kullanıcı durumunu güncelle
+        await User.updateOne({ email: address }, { status: 'completed' });
+        console.log('Kullanıcı kaydı tamamlandı:', address);
 
     } catch (error) {
-        console.error('Bir hata oluştu:', error);
+        console.error('Hata oluştu:', error);
     } finally {
-        // MongoDB bağlantısını kapat
-        if (client) {
-            await client.close();
+        if (browser) {
+            await browser.close();
+            console.log('Tarayıcı kapatıldı...');
         }
-        // Keep browser open for manual verification
-        // await browser.close();
+        await mongoose.connection.close();
+        console.log('MongoDB bağlantısı kapatıldı...');
     }
 }
 
-// Start the process
+// Uygulamayı başlat
 startLinkedInSignup(); 
