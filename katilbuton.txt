@@ -1,0 +1,3 @@
+<button class="join-form__form-body-submit-button " data-tracking-control-name="registration-frontend_join-form-submit" id="join-form-submit" value="Kabul Et ve Katıl" type="submit">
+              Kabul Et ve Katıl
+            </button>

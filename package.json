@@ -1,0 +1,13 @@
+{
+  "name": "linkedin-signup-bot",
+  "version": "1.0.0",
+  "description": "LinkedIn signup automation bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "mongodb": "^6.16.0",
+    "puppeteer": "latest"
+  }
+}

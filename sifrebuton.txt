@@ -1,0 +1,1 @@
+<input class="input__input ms-reveal:opacity-0 ms-clear:opacity-0 error text-input-error error--is-inline" autocomplete="new-password" required="true" id="password" name="password" placeholder="" value="" data-tracking-control-name="registration-frontend_join-form-password" type="password">

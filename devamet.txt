@@ -1,0 +1,1 @@
+<button class="join-form__form-body-submit-button join-form__form-body-submit-button--no-agreement-text" data-tracking-control-name="registration-frontend_join-form-submit" id="join-form-submit" value="Devam Et" type="submit">Devam Et</button>

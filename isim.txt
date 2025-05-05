@@ -1,0 +1,4 @@
+<input class="input__input error text-input-error error--is-inline" autocomplete="on" data-tracking-control-name="registration-frontend_join-form-name_first-name" id="first-name" name="first-name" placeholder="Ad" type="text" required="required">
+
+
+<input class="input__input error text-input-error error--is-inline" autocomplete="on" data-tracking-control-name="registration-frontend_join-form-name_last-name" id="last-name" name="last-name" placeholder="Soyadı" type="text" required="required">
