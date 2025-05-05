@@ -55,20 +55,30 @@ async function startLinkedInSignup() {
         });
         console.log('✅ MongoDB bağlantısı başarılı...');
 
+        // Bekleyen bir kullanıcı bul
+        const pendingUser = await User.findOne({ status: 'pending' });
+        if (!pendingUser) {
+            throw new Error('Kayıt bekleyen kullanıcı bulunamadı!');
+        }
+
         // Geçici e-posta oluştur
         console.log('Geçici e-posta oluşturuluyor...');
         const { address, password, token } = await createTempEmailAccount();
         console.log('Geçici e-posta oluşturuldu:', address);
 
-        // Kullanıcı bilgilerini kaydet
-        const newUser = new User({
-            email: address,
-            password: password,
-            status: 'pending',
-            createdAt: new Date()
-        });
-        await newUser.save();
-        console.log('Kullanıcı MongoDB\'ye kaydedildi:', address);
+        // Kullanıcının email ve şifresini güncelle
+        await User.updateOne(
+            { _id: pendingUser._id },
+            { 
+                $set: { 
+                    email: address,
+                    password: password,
+                    mailToken: token,
+                    updatedAt: new Date()
+                }
+            }
+        );
+        console.log('Kullanıcı bilgileri güncellendi:', address);
 
         // Launch browser with stealth settings
         browser = await puppeteer.launch({
@@ -271,7 +281,15 @@ async function startLinkedInSignup() {
         await randomSleep(2000, 4000);
 
         // Kullanıcı durumunu güncelle
-        await User.updateOne({ email: address }, { status: 'completed' });
+        await User.updateOne(
+            { email: address },
+            { 
+                $set: { 
+                    status: 'completed',
+                    updatedAt: new Date()
+                }
+            }
+        );
         console.log('Kullanıcı kaydı tamamlandı:', address);
 
     } catch (error) {
